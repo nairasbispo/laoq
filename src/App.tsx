@@ -5,7 +5,8 @@ import {
   subscribeMembers, 
   subscribeBudgets, 
   seedDatabaseIfEmpty, 
-  resetDatabaseToDefaults 
+  resetDatabaseToDefaults,
+  clearDatabaseCompletely
 } from './firebase';
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
@@ -15,6 +16,7 @@ import { FlowView } from './components/FlowView';
 import { StatusView } from './components/StatusView';
 import { ReceiptModal } from './components/ReceiptModal';
 import { AllTransactionsModal } from './components/AllTransactionsModal';
+import { DatabaseModal } from './components/DatabaseModal';
 import { AnimatePresence, motion } from 'motion/react';
 
 export default function App() {
@@ -28,6 +30,7 @@ export default function App() {
     category: 'Eventos e Congressos',
   });
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isDatabaseModalOpen, setIsDatabaseModalOpen] = useState(false);
 
   // Receipt Modal Lightbox state
   const [receiptModalData, setReceiptModalData] = useState<{
@@ -81,18 +84,20 @@ export default function App() {
     });
   };
 
-  const handleResetData = async () => {
-    if (
-      confirm(
-        'Deseja restaurar os dados de demonstração da LAOQ no Firebase Firestore?'
-      )
-    ) {
-      setIsSyncing(true);
-      await resetDatabaseToDefaults();
-      setTimeout(() => {
-        setIsSyncing(false);
-      }, 800);
-    }
+  const handleClearAll = async () => {
+    setIsSyncing(true);
+    await clearDatabaseCompletely();
+    setTimeout(() => {
+      setIsSyncing(false);
+    }, 600);
+  };
+
+  const handleRestoreDefaults = async () => {
+    setIsSyncing(true);
+    await resetDatabaseToDefaults();
+    setTimeout(() => {
+      setIsSyncing(false);
+    }, 600);
   };
 
   const handleRegisterForMember = (memberName: string, month: number, year: number) => {
@@ -101,10 +106,10 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#f7f9fb] text-[#191c1e] font-sans flex flex-col selection:bg-[#9fcde1] selection:text-[#003746]">
-      {/* Sticky App Header with Realtime Status */}
+      {/* Sticky App Header with Realtime Status & Database Manager */}
       <Header
         currentTab={currentTab}
-        onResetData={handleResetData}
+        onOpenDatabaseModal={() => setIsDatabaseModalOpen(true)}
         isSyncing={isSyncing}
       />
 
@@ -179,6 +184,15 @@ export default function App() {
         onClose={() => setIsAllTransactionsModalOpen(false)}
         transactions={transactions}
         onViewReceipt={handleOpenReceipt}
+      />
+
+      {/* Database Management Modal (Clear all or Reset demo data) */}
+      <DatabaseModal
+        isOpen={isDatabaseModalOpen}
+        onClose={() => setIsDatabaseModalOpen(false)}
+        onClearAll={handleClearAll}
+        onRestoreDefaults={handleRestoreDefaults}
+        isProcessing={isSyncing}
       />
     </div>
   );

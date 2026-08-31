@@ -379,6 +379,19 @@ export async function seedDatabaseIfEmpty(): Promise<boolean> {
 
 // Force re-seed (Reset demo data)
 export async function resetDatabaseToDefaults(): Promise<void> {
+  await clearDatabaseCompletely();
+  // Reseed default data
+  for (const t of INITIAL_TRANSACTIONS) {
+    await addDoc(collection(db, TRANSACTIONS_COLLECTION), t);
+  }
+  for (const m of INITIAL_MEMBERS) {
+    await addDoc(collection(db, MEMBERS_COLLECTION), m);
+  }
+  await setDoc(doc(db, BUDGETS_COLLECTION, 'current'), INITIAL_BUDGET);
+}
+
+// Completely Wipe/Clear Firestore Database
+export async function clearDatabaseCompletely(): Promise<void> {
   const tSnap = await getDocs(collection(db, TRANSACTIONS_COLLECTION));
   for (const docItem of tSnap.docs) {
     await deleteDoc(docItem.ref);
@@ -387,5 +400,8 @@ export async function resetDatabaseToDefaults(): Promise<void> {
   for (const docItem of mSnap.docs) {
     await deleteDoc(docItem.ref);
   }
-  await seedDatabaseIfEmpty();
+  const bSnap = await getDocs(collection(db, BUDGETS_COLLECTION));
+  for (const docItem of bSnap.docs) {
+    await deleteDoc(docItem.ref);
+  }
 }

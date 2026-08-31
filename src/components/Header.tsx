@@ -4,7 +4,7 @@ import { RefreshCw, Database } from 'lucide-react';
 
 interface HeaderProps {
   currentTab: TabType;
-  onResetData: () => void;
+  onOpenDatabaseModal: () => void;
   isSyncing?: boolean;
 }
 
@@ -15,7 +15,7 @@ const TAB_TITLES: Record<TabType, string> = {
   status: 'Status',
 };
 
-export const Header: React.FC<HeaderProps> = ({ currentTab, onResetData, isSyncing }) => {
+export const Header: React.FC<HeaderProps> = ({ currentTab, onOpenDatabaseModal, isSyncing }) => {
   return (
     <header className="fixed top-0 w-full z-40 bg-[#f7f9fb]/90 backdrop-blur-xl pt-safe border-b border-[#e0e3e5]/60 shadow-[0_1px_8px_rgba(0,0,0,0.03)]">
       <div className="max-w-2xl mx-auto h-16 flex items-center justify-between px-4">
@@ -34,8 +34,8 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onResetData, isSynci
           </div>
         </div>
 
-        {/* Right: Realtime Firebase indicator & Logo */}
-        <div className="flex items-center gap-2.5">
+        {/* Right: Realtime Firebase indicator & Actions */}
+        <div className="flex items-center gap-2">
           {/* Live Cloud Sync Indicator */}
           <div 
             title="Sincronização em tempo real via Firebase Firestore"
@@ -48,13 +48,14 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onResetData, isSynci
             <span className="hidden sm:inline text-[11px] font-semibold">Firebase Sync</span>
           </div>
 
-          {/* Reset Demo Data Button */}
+          {/* Database Manager / Reset Button */}
           <button
-            onClick={onResetData}
-            title="Restaurar dados de exemplo da LAOQ"
-            className="w-8 h-8 rounded-full bg-white border border-[#c0c8cb] text-[#41484b] hover:text-[#003746] hover:bg-[#eceef0] flex items-center justify-center transition-colors active:scale-95 shadow-sm"
+            onClick={onOpenDatabaseModal}
+            title="Gerenciar Banco de Dados (Zerar ou Restaurar)"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white border border-[#c0c8cb] text-[#41484b] hover:text-[#ba1a1a] hover:border-[#ba1a1a] hover:bg-[#ffdad6]/20 transition-all text-xs font-semibold shadow-sm active:scale-95"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-[#003746]' : ''}`} />
+            <Database className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-[#003746]' : ''}`} />
+            <span className="hidden sm:inline text-[11px]">Banco</span>
           </button>
 
           {/* LAOQ Logo Avatar */}
