@@ -16,7 +16,12 @@ import {
   Trash2,
   Edit2,
   ArrowRight,
-  RotateCcw
+  RotateCcw,
+  Layers,
+  Calendar,
+  Users,
+  Upload,
+  Link as LinkIcon
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -31,6 +36,11 @@ const MONTH_NAMES = [
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
 ];
 
+const MONTH_SHORTS = [
+  'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
+  'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'
+];
+
 export const StatusView: React.FC<StatusViewProps> = ({
   members,
   onViewReceipt,
@@ -40,7 +50,7 @@ export const StatusView: React.FC<StatusViewProps> = ({
   const currentYear = new Date().getFullYear();
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'realizados' | 'pendentes'>('pendentes');
+  const [activeTab, setActiveTab] = useState<'pendentes' | 'realizados' | 'todos_membros'>('pendentes');
   const [selectedMonth, setSelectedMonth] = useState<number>(currentMonth);
   const [selectedYear, setSelectedYear] = useState<number>(currentYear);
 
@@ -64,6 +74,15 @@ export const StatusView: React.FC<StatusViewProps> = ({
 
   // WhatsApp Reminder State
   const [reminderMember, setReminderMember] = useState<Member | null>(null);
+
+  // Batch Payment Modal State
+  const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
+  const [batchMemberId, setBatchMemberId] = useState<string>('');
+  const [batchSelectedYear, setBatchSelectedYear] = useState<number>(currentYear);
+  const [batchSelectedMonths, setBatchSelectedMonths] = useState<number[]>([currentMonth]);
+  const [batchReceiptUrl, setBatchReceiptUrl] = useState('');
+  const [batchReceiptFileName, setBatchReceiptFileName] = useState('');
+  const [isBatchSubmitting, setIsBatchSubmitting] = useState(false);
 
   // Action Loading states
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
@@ -256,6 +275,126 @@ export const StatusView: React.FC<StatusViewProps> = ({
     }
   };
 
+  // Open Batch Payment for a specific member or general
+  const handleOpenBatchModal = (member?: Member) => {
+    const targetMember = member || members[0];
+    if (targetMember?.id) {
+      setBatchMemberId(targetMember.id);
+      
+      // Pre-select pending months for this member in the current year
+      const pending: number[] = [];
+      for (let m = 1; m <= 12; m++) {
+        const key = `${selectedYear}-${String(m).padStart(2, '0')}`;
+        if (!targetMember.payments?.[key]?.paid) {
+          pending.push(m);
+        }
+      }
+      setBatchSelectedMonths(pending.length > 0 ? pending : [selectedMonth]);
+    } else {
+      setBatchMemberId('');
+      setBatchSelectedMonths([selectedMonth]);
+    }
+
+    setBatchSelectedYear(selectedYear);
+    setBatchReceiptUrl('');
+    setBatchReceiptFileName('');
+    setIsBatchModalOpen(true);
+  };
+
+  const selectedBatchMember = members.find((m) => m.id === batchMemberId);
+  const batchUnitFee = selectedBatchMember?.monthlyFee || 50;
+  const batchTotalAmount = batchUnitFee * batchSelectedMonths.length;
+
+  const handleToggleBatchMonth = (m: number) => {
+    if (batchSelectedMonths.includes(m)) {
+      setBatchSelectedMonths(batchSelectedMonths.filter((mo) => mo !== m));
+    } else {
+      setBatchSelectedMonths([...batchSelectedMonths, m].sort((a, b) => a - b));
+    }
+  };
+
+  const handleBatchFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBatchReceiptFileName(file.name);
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target?.result) {
+        setBatchReceiptUrl(event.target.result as string);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleConfirmBatchPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedBatchMember?.id) {
+      alert('Selecione um membro.');
+      return;
+    }
+    if (batchSelectedMonths.length === 0) {
+      alert('Selecione ao menos um mês para o pagamento em lote.');
+      return;
+    }
+
+    setIsBatchSubmitting(true);
+    try {
+      const formattedDate = `${String(new Date().getDate()).padStart(2, '0')}/${String(new Date().getMonth() + 1).padStart(2, '0')}/${new Date().getFullYear()}`;
+      const monthNamesList = batchSelectedMonths.map((m) => MONTH_SHORTS[m - 1]).join(', ');
+
+      // 1. Create consolidated income transaction in Cash Flow
+      const batchTransId = await addTransaction({
+        type: 'income',
+        category: 'Mensalidade',
+        description: `Mensalidade em Lote (${batchSelectedMonths.length} meses: ${monthNamesList}/${batchSelectedYear}) - ${selectedBatchMember.name}`,
+        amount: batchTotalAmount,
+        date: new Date().toISOString().split('T')[0],
+        timestamp: Date.now(),
+        status: 'paid',
+        memberName: selectedBatchMember.name,
+        memberId: selectedBatchMember.id,
+        year: batchSelectedYear,
+        receiptUrl: batchReceiptUrl || undefined,
+        receiptName: batchReceiptFileName || undefined,
+        notes: `Pagamento em lote referente aos meses: ${monthNamesList} de ${batchSelectedYear}`,
+      });
+
+      // 2. Update member payments map for all selected months
+      const updatedPayments = { ...(selectedBatchMember.payments || {}) };
+      batchSelectedMonths.forEach((m) => {
+        const pKey = `${batchSelectedYear}-${String(m).padStart(2, '0')}`;
+        updatedPayments[pKey] = {
+          paid: true,
+          date: formattedDate,
+          amount: batchUnitFee,
+          receiptUrl: batchReceiptUrl || undefined,
+          transactionId: batchTransId,
+        };
+      });
+
+      await updateMember(selectedBatchMember.id, {
+        payments: updatedPayments,
+      });
+
+      try {
+        confetti({
+          particleCount: 70,
+          spread: 60,
+          origin: { y: 0.7 },
+          colors: ['#003746', '#fea045', '#9fcde1'],
+        });
+      } catch {}
+
+      setIsBatchModalOpen(false);
+    } catch (err) {
+      console.error('Error saving batch payment:', err);
+      alert('Erro ao registrar pagamento em lote.');
+    } finally {
+      setIsBatchSubmitting(false);
+    }
+  };
+
   const getWhatsAppLink = (member: Member) => {
     const msg = encodeURIComponent(
       `Olá ${member.name}! Lembramos sobre a mensalidade de ${MONTH_NAMES[selectedMonth - 1]}/${selectedYear} da LAOQ (R$ ${member.monthlyFee || 50},00). Agradecemos a colaboração!`
@@ -282,13 +421,13 @@ export const StatusView: React.FC<StatusViewProps> = ({
           />
         </div>
 
-        {/* Period Selector & Add Member Button */}
-        <div className="flex items-center justify-between gap-2">
+        {/* Period Selector & Action Buttons */}
+        <div className="flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
           <div className="flex items-center gap-2">
             <select
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(Number(e.target.value))}
-              className="px-3 py-1.5 bg-white border border-[#c0c8cb] rounded-lg text-xs font-semibold text-[#003746] focus:outline-none shadow-sm cursor-pointer"
+              className="px-3 py-2 bg-white border border-[#c0c8cb] rounded-lg text-xs font-semibold text-[#003746] focus:outline-none shadow-sm cursor-pointer"
             >
               {MONTH_NAMES.map((name, idx) => (
                 <option key={idx + 1} value={idx + 1}>
@@ -299,7 +438,7 @@ export const StatusView: React.FC<StatusViewProps> = ({
             <select
               value={selectedYear}
               onChange={(e) => setSelectedYear(Number(e.target.value))}
-              className="px-3 py-1.5 bg-white border border-[#c0c8cb] rounded-lg text-xs font-semibold text-[#003746] focus:outline-none shadow-sm cursor-pointer"
+              className="px-3 py-2 bg-white border border-[#c0c8cb] rounded-lg text-xs font-semibold text-[#003746] focus:outline-none shadow-sm cursor-pointer"
             >
               <option value="2026">2026</option>
               <option value="2025">2025</option>
@@ -308,20 +447,34 @@ export const StatusView: React.FC<StatusViewProps> = ({
             </select>
           </div>
 
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            className="px-3 py-1.5 bg-[#003746] text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 hover:bg-[#1d4e5e] shadow-sm transition-all active:scale-95"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Novo Membro</span>
-          </button>
+          <div className="flex items-center gap-1.5 ml-auto">
+            {/* Batch Payment Button */}
+            <button
+              onClick={() => handleOpenBatchModal()}
+              className="px-3 py-2 bg-[#e6eef0] text-[#003746] hover:bg-[#d0e0e5] border border-[#003746]/20 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all active:scale-95"
+              title="Pagar múltiplos meses de uma vez (em lote)"
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Pagar em Lote</span>
+            </button>
+
+            {/* Add Member Button */}
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              className="px-3 py-2 bg-[#003746] text-white rounded-lg text-xs font-bold flex items-center gap-1.5 hover:bg-[#1d4e5e] shadow-sm transition-all active:scale-95"
+              title="Cadastrar novo membro na lista da liga"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Novo Membro</span>
+            </button>
+          </div>
         </div>
 
-        {/* Realizados vs Pendentes Tabs */}
+        {/* Realizados vs Pendentes vs Todos os Membros Tabs */}
         <div className="flex gap-1 p-1 bg-[#e6e8ea] rounded-xl">
           <button
             onClick={() => setActiveTab('pendentes')}
-            className={`flex-1 py-2.5 text-xs sm:text-sm font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+            className={`flex-1 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
               activeTab === 'pendentes'
                 ? 'bg-[#ba1a1a] text-white shadow-sm'
                 : 'text-[#41484b] hover:bg-[#d8dadc]/50'
@@ -332,19 +485,30 @@ export const StatusView: React.FC<StatusViewProps> = ({
           </button>
           <button
             onClick={() => setActiveTab('realizados')}
-            className={`flex-1 py-2.5 text-xs sm:text-sm font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+            className={`flex-1 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
               activeTab === 'realizados'
                 ? 'bg-[#003746] text-white shadow-sm'
                 : 'text-[#41484b] hover:bg-[#d8dadc]/50'
             }`}
           >
             <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>Realizados ({paidMembers.length})</span>
+            <span>Pagos ({paidMembers.length})</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('todos_membros')}
+            className={`flex-1 py-2 text-xs sm:text-sm font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+              activeTab === 'todos_membros'
+                ? 'bg-[#003746] text-white shadow-sm'
+                : 'text-[#41484b] hover:bg-[#d8dadc]/50'
+            }`}
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>Membros Salvos ({members.length})</span>
           </button>
         </div>
       </div>
 
-      {/* Summary Cards (2 Columns: Recebido vs A Receber) */}
+      {/* Summary Cards (Recebido vs A Receber) */}
       <div className="grid grid-cols-2 gap-3.5">
         {/* Recebido */}
         <div className="bg-[#eceef0] rounded-xl p-4 flex flex-col gap-1 relative overflow-hidden border border-[#c0c8cb]/30 shadow-sm">
@@ -379,24 +543,38 @@ export const StatusView: React.FC<StatusViewProps> = ({
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between px-1">
           <h3 className="text-xs font-bold uppercase tracking-wider text-[#71787c]">
-            {activeTab === 'pendentes' ? 'Membros com Mensalidade Pendente' : 'Membros com Mensalidade Paga'} ({periodLabel})
+            {activeTab === 'pendentes' 
+              ? `Membros Pendentes em ${periodLabel}` 
+              : activeTab === 'realizados' 
+              ? `Membros com Pagamento Confirmado em ${periodLabel}`
+              : `Membros Cadastrados na Liga (Salvos para todos os meses)`}
           </h3>
           <span className="text-[11px] text-[#71787c]">
-            Total: {members.length} {members.length === 1 ? 'membro' : 'membros'}
+            {filteredMembers.length} {filteredMembers.length === 1 ? 'membro' : 'membros'}
           </span>
         </div>
 
         <div className="flex flex-col gap-2.5">
-          {(activeTab === 'realizados' ? paidMembers : pendingMembers).map(
-            (member) => {
-              const isPaid = member.isPaid;
-              const isLoading = actionLoadingId === member.id;
+          {(activeTab === 'realizados' 
+            ? paidMembers 
+            : activeTab === 'pendentes' 
+            ? pendingMembers 
+            : filteredMembers
+          ).map((member) => {
+            const isPaid = member.isPaid;
+            const isLoading = actionLoadingId === member.id;
 
-              return (
-                <div
-                  key={member.id || member.name}
-                  className="bg-white rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-[#e0e3e5] shadow-sm hover:border-[#c0c8cb] transition-colors"
-                >
+            // Count paid months in the selected year
+            const paidCountYear = Object.keys(member.payments || {}).filter(
+              (k) => k.startsWith(`${selectedYear}-`) && member.payments?.[k]?.paid
+            ).length;
+
+            return (
+              <div
+                key={member.id || member.name}
+                className="bg-white rounded-xl p-3.5 flex flex-col gap-3 border border-[#e0e3e5] shadow-sm hover:border-[#c0c8cb] transition-colors"
+              >
+                <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
                     {/* Initials Avatar */}
                     <div
@@ -423,30 +601,60 @@ export const StatusView: React.FC<StatusViewProps> = ({
                         {member.phone && (
                           <span>• {member.phone}</span>
                         )}
+                        <span>• {paidCountYear}/12 pagos ({selectedYear})</span>
                       </div>
                     </div>
                   </div>
 
-                  {/* Actions & Status buttons */}
-                  <div className="flex items-center justify-between sm:justify-end gap-2 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-[#f2f4f6]">
-                    {/* Edit Member & Delete Member Icons */}
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleOpenEditModal(member)}
-                        title="Editar dados do membro"
-                        className="p-1.5 rounded-lg text-[#71787c] hover:text-[#003746] hover:bg-[#eceef0] transition-colors"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => setMemberToDelete(member)}
-                        title="Apagar membro da liga"
-                        className="p-1.5 rounded-lg text-[#71787c] hover:text-[#ba1a1a] hover:bg-[#ffdad6]/40 transition-colors"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                  {/* Edit & Delete Action Icons */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => handleOpenEditModal(member)}
+                      title="Editar dados do membro"
+                      className="p-1.5 rounded-lg text-[#71787c] hover:text-[#003746] hover:bg-[#eceef0] transition-colors"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setMemberToDelete(member)}
+                      title="Apagar membro permanentemente"
+                      className="p-1.5 rounded-lg text-[#71787c] hover:text-[#ba1a1a] hover:bg-[#ffdad6]/40 transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
 
+                {/* Bottom Row: 12-Month Mini History Bar + Actions */}
+                <div className="pt-2 border-t border-[#f2f4f6] flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                  {/* Mini 12 Month strip */}
+                  <div className="flex items-center gap-1 overflow-x-auto py-0.5">
+                    {MONTH_SHORTS.map((shortName, idx) => {
+                      const mNum = idx + 1;
+                      const pKey = `${selectedYear}-${String(mNum).padStart(2, '0')}`;
+                      const hasPaid = !!member.payments?.[pKey]?.paid;
+                      const isCurrentSelected = mNum === selectedMonth;
+
+                      return (
+                        <span
+                          key={mNum}
+                          title={`${MONTH_NAMES[idx]}/${selectedYear}: ${hasPaid ? 'Pago' : 'Pendente'}`}
+                          className={`text-[9px] font-bold px-1.5 py-0.5 rounded transition-all ${
+                            hasPaid
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : isCurrentSelected
+                              ? 'bg-[#ffdad6] text-[#ba1a1a] ring-1 ring-[#ba1a1a]'
+                              : 'bg-[#f2f4f6] text-[#71787c]'
+                          }`}
+                        >
+                          {shortName}
+                        </span>
+                      );
+                    })}
+                  </div>
+
+                  {/* Actions for current month */}
+                  <div className="flex items-center justify-end gap-1.5 shrink-0">
                     {isPaid ? (
                       <div className="flex items-center gap-2">
                         {member.receiptUrl && (
@@ -466,8 +674,8 @@ export const StatusView: React.FC<StatusViewProps> = ({
                             <span>Comprovante</span>
                           </button>
                         )}
-                        <span className="px-2.5 py-1 rounded-full bg-[#003746]/10 text-[#003746] text-[11px] font-bold tracking-wider">
-                          PAGO
+                        <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold tracking-wider">
+                          PAGO ({MONTH_SHORTS[selectedMonth - 1]})
                         </span>
                         <button
                           onClick={() => handleUnmarkPayment(member)}
@@ -479,6 +687,7 @@ export const StatusView: React.FC<StatusViewProps> = ({
                       </div>
                     ) : (
                       <div className="flex items-center gap-1.5">
+                        {/* Remind Button */}
                         <button
                           onClick={() => setReminderMember(member)}
                           title="Enviar lembrete via WhatsApp"
@@ -487,10 +696,21 @@ export const StatusView: React.FC<StatusViewProps> = ({
                           Lembrar
                         </button>
 
+                        {/* Pay in Batch Button */}
+                        <button
+                          onClick={() => handleOpenBatchModal(member)}
+                          title="Pagar múltiplos meses em lote para este membro"
+                          className="px-2.5 py-1 text-xs text-[#003746] font-semibold bg-[#e6eef0] hover:bg-[#d0e0e5] rounded-lg transition-colors flex items-center gap-1"
+                        >
+                          <Layers className="w-3 h-3" />
+                          <span>Em Lote</span>
+                        </button>
+
+                        {/* Quick Mark Paid for this month */}
                         <button
                           onClick={() => handleQuickMarkPaid(member)}
                           disabled={isLoading}
-                          title="Confirmar pagamento rápido e gerar receita no fluxo de caixa"
+                          title={`Confirmar pagamento de ${periodLabel}`}
                           className="px-3 py-1 bg-[#003746] text-white text-xs font-semibold rounded-lg hover:bg-[#1d4e5e] transition-colors flex items-center gap-1 active:scale-95"
                         >
                           {isLoading ? (
@@ -503,9 +723,10 @@ export const StatusView: React.FC<StatusViewProps> = ({
                           )}
                         </button>
 
+                        {/* Open Complete Form */}
                         <button
                           onClick={() => onRegisterPaymentForMember(member.name, selectedMonth, selectedYear)}
-                          title="Registrar pagamento com anexo de comprovante"
+                          title="Registrar pagamento com anexo de comprovante detalhado"
                           className="p-1 text-[#71787c] hover:text-[#003746] rounded"
                         >
                           <ArrowRight className="w-4 h-4" />
@@ -514,21 +735,248 @@ export const StatusView: React.FC<StatusViewProps> = ({
                     )}
                   </div>
                 </div>
-              );
-            }
-          )}
+              </div>
+            );
+          })}
 
-          {(activeTab === 'realizados' ? paidMembers : pendingMembers).length === 0 && (
+          {filteredMembers.length === 0 && (
             <div className="p-8 text-center bg-white rounded-xl border border-dashed border-[#c0c8cb]">
               <p className="text-sm text-[#71787c]">
                 {members.length === 0 
-                  ? 'Nenhum membro cadastrado ainda. Clique em "Novo Membro" acima para adicionar.'
-                  : `Nenhum membro ${activeTab === 'realizados' ? 'com pagamento confirmado' : 'pendente'} neste mês.`}
+                  ? 'Nenhum membro cadastrado ainda. Clique em "+ Novo Membro" acima para adicionar uma única vez.'
+                  : `Nenhum membro encontrado com o termo pesquisado.`}
               </p>
             </div>
           )}
         </div>
       </div>
+
+      {/* BATCH PAYMENT MODAL */}
+      {isBatchModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-5 border border-[#c0c8cb] shadow-2xl flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-[#003746]">
+                <div className="w-8 h-8 rounded-lg bg-[#003746] text-white flex items-center justify-center">
+                  <Layers className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-headline font-bold text-base leading-tight">
+                    Pagamento de Mensalidades em Lote
+                  </h3>
+                  <span className="text-xs text-[#71787c]">
+                    Pague vários meses de uma só vez para um membro
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsBatchModalOpen(false)}
+                className="text-[#71787c] hover:text-[#191c1e]"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmBatchPayment} className="flex flex-col gap-4">
+              {/* Member Selection */}
+              <div>
+                <label className="text-xs font-semibold text-[#41484b]">Selecionar Membro</label>
+                <select
+                  required
+                  value={batchMemberId}
+                  onChange={(e) => {
+                    setBatchMemberId(e.target.value);
+                    const m = members.find((mem) => mem.id === e.target.value);
+                    if (m) {
+                      const pend: number[] = [];
+                      for (let i = 1; i <= 12; i++) {
+                        const key = `${batchSelectedYear}-${String(i).padStart(2, '0')}`;
+                        if (!m.payments?.[key]?.paid) {
+                          pend.push(i);
+                        }
+                      }
+                      setBatchSelectedMonths(pend.length > 0 ? pend : [selectedMonth]);
+                    }
+                  }}
+                  className="w-full mt-1 px-3.5 py-2.5 border border-[#c0c8cb] rounded-lg text-sm font-medium focus:outline-[#003746]"
+                >
+                  <option value="">Selecione o membro...</option>
+                  {members.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} ({m.role}) - R$ {(m.monthlyFee || 50).toFixed(2)}/mês
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Year Selection */}
+              <div>
+                <label className="text-xs font-semibold text-[#41484b]">Ano de Referência</label>
+                <select
+                  value={batchSelectedYear}
+                  onChange={(e) => {
+                    const yr = Number(e.target.value);
+                    setBatchSelectedYear(yr);
+                    if (selectedBatchMember) {
+                      const pend: number[] = [];
+                      for (let i = 1; i <= 12; i++) {
+                        const key = `${yr}-${String(i).padStart(2, '0')}`;
+                        if (!selectedBatchMember.payments?.[key]?.paid) {
+                          pend.push(i);
+                        }
+                      }
+                      setBatchSelectedMonths(pend.length > 0 ? pend : [1]);
+                    }
+                  }}
+                  className="w-full mt-1 px-3.5 py-2.5 border border-[#c0c8cb] rounded-lg text-sm font-medium focus:outline-[#003746]"
+                >
+                  <option value="2026">2026</option>
+                  <option value="2025">2025</option>
+                  <option value="2024">2024</option>
+                  <option value="2023">2023</option>
+                </select>
+              </div>
+
+              {/* Months Grid & Presets */}
+              <div className="flex flex-col gap-2 p-3 bg-[#f7f9fb] rounded-xl border border-[#c0c8cb]">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-[#003746]">
+                    Meses Selecionados ({batchSelectedMonths.length})
+                  </span>
+                  <span className="text-xs font-bold text-[#003746]">
+                    Total: R$ {batchTotalAmount.toFixed(2)}
+                  </span>
+                </div>
+
+                {/* Preset buttons */}
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setBatchSelectedMonths([1, 2, 3, 4, 5, 6])}
+                    className="px-2 py-1 bg-white border border-[#c0c8cb] text-[11px] font-semibold text-[#003746] rounded-md hover:bg-[#eceef0]"
+                  >
+                    1º Semestre
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBatchSelectedMonths([7, 8, 9, 10, 11, 12])}
+                    className="px-2 py-1 bg-white border border-[#c0c8cb] text-[11px] font-semibold text-[#003746] rounded-md hover:bg-[#eceef0]"
+                  >
+                    2º Semestre
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBatchSelectedMonths([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])}
+                    className="px-2 py-1 bg-white border border-[#c0c8cb] text-[11px] font-semibold text-[#003746] rounded-md hover:bg-[#eceef0]"
+                  >
+                    Ano Inteiro
+                  </button>
+                  {selectedBatchMember && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const pend: number[] = [];
+                        for (let i = 1; i <= 12; i++) {
+                          const key = `${batchSelectedYear}-${String(i).padStart(2, '0')}`;
+                          if (!selectedBatchMember.payments?.[key]?.paid) {
+                            pend.push(i);
+                          }
+                        }
+                        setBatchSelectedMonths(pend);
+                      }}
+                      className="px-2 py-1 bg-[#ba1a1a]/10 text-[11px] font-semibold text-[#ba1a1a] rounded-md hover:bg-[#ba1a1a]/20"
+                    >
+                      Todos os Pendentes
+                    </button>
+                  )}
+                </div>
+
+                {/* 12 Months selection checkboxes */}
+                <div className="grid grid-cols-4 gap-2 pt-2">
+                  {MONTH_SHORTS.map((shortName, idx) => {
+                    const mNum = idx + 1;
+                    const isSelected = batchSelectedMonths.includes(mNum);
+                    const periodK = `${batchSelectedYear}-${String(mNum).padStart(2, '0')}`;
+                    const isAlreadyPaid = !!selectedBatchMember?.payments?.[periodK]?.paid;
+
+                    return (
+                      <button
+                        key={mNum}
+                        type="button"
+                        onClick={() => handleToggleBatchMonth(mNum)}
+                        className={`p-2 rounded-lg border text-xs font-semibold flex items-center justify-between transition-all ${
+                          isSelected
+                            ? 'bg-[#003746] text-white border-[#003746]'
+                            : isAlreadyPaid
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                            : 'bg-white text-[#41484b] border-[#c0c8cb] hover:border-[#003746]'
+                        }`}
+                      >
+                        <span>{shortName}</span>
+                        <div className={`w-3.5 h-3.5 rounded-full flex items-center justify-center ${
+                          isSelected ? 'bg-white text-[#003746]' : isAlreadyPaid ? 'bg-emerald-600 text-white' : 'border border-[#c0c8cb]'
+                        }`}>
+                          {(isSelected || isAlreadyPaid) && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Receipt Upload */}
+              <div>
+                <label className="text-xs font-semibold text-[#41484b]">Comprovante PIX (Opcional)</label>
+                <div className="mt-1 flex items-center gap-2">
+                  <label className="flex-1 px-3 py-2 bg-[#f7f9fb] border border-[#c0c8cb] rounded-lg text-xs cursor-pointer hover:bg-[#eceef0] flex items-center gap-2 truncate">
+                    <Upload className="w-3.5 h-3.5 text-[#003746] shrink-0" />
+                    <span className="truncate">
+                      {batchReceiptFileName || 'Anexar comprovante do lote...'}
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*,.pdf"
+                      className="hidden"
+                      onChange={handleBatchFileUpload}
+                    />
+                  </label>
+                  {batchReceiptFileName && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBatchReceiptUrl('');
+                        setBatchReceiptFileName('');
+                      }}
+                      className="p-2 text-[#ba1a1a] hover:bg-[#ffdad6] rounded-lg"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Buttons */}
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  disabled={isBatchSubmitting}
+                  onClick={() => setIsBatchModalOpen(false)}
+                  className="flex-1 py-2.5 bg-[#eceef0] text-[#41484b] font-semibold text-xs rounded-xl"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isBatchSubmitting || batchSelectedMonths.length === 0 || !batchMemberId}
+                  className="flex-1 py-2.5 bg-[#003746] text-white font-semibold text-xs rounded-xl hover:bg-[#1d4e5e] disabled:opacity-50 flex items-center justify-center gap-1.5"
+                >
+                  {isBatchSubmitting ? 'Salvando...' : `Confirmar Pagamento (R$ ${batchTotalAmount.toFixed(2)})`}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Delete Member Confirmation Modal */}
       {memberToDelete && (
@@ -543,7 +991,7 @@ export const StatusView: React.FC<StatusViewProps> = ({
                 Excluir Membro?
               </h3>
               <p className="text-sm text-[#41484b] mt-1">
-                Tem certeza que deseja remover <strong>{memberToDelete.name}</strong> da lista da liga?
+                Tem certeza que deseja remover permanentemente <strong>{memberToDelete.name}</strong> da base de dados?
               </p>
             </div>
 
@@ -710,9 +1158,14 @@ export const StatusView: React.FC<StatusViewProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-2xl max-w-md w-full p-5 border border-[#c0c8cb] shadow-2xl flex flex-col gap-4">
             <div className="flex items-center justify-between">
-              <h3 className="font-headline font-bold text-lg text-[#003746]">
-                Cadastrar Novo Membro
-              </h3>
+              <div>
+                <h3 className="font-headline font-bold text-lg text-[#003746]">
+                  Cadastrar Novo Membro
+                </h3>
+                <span className="text-xs text-[#71787c]">
+                  O membro ficará salvo para todos os meses do sistema
+                </span>
+              </div>
               <button
                 onClick={() => setIsAddModalOpen(false)}
                 className="text-[#71787c] hover:text-[#191c1e]"
@@ -788,7 +1241,7 @@ export const StatusView: React.FC<StatusViewProps> = ({
                   type="submit"
                   className="flex-1 py-2.5 bg-[#003746] text-white font-semibold text-xs rounded-xl hover:bg-[#1d4e5e]"
                 >
-                  Cadastrar
+                  Cadastrar Membro
                 </button>
               </div>
             </form>

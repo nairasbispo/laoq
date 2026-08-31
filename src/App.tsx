@@ -80,7 +80,15 @@ export default function App() {
     });
   };
 
+  // Prefill state for RegisterPaymentView
+  const [registerPrefill, setRegisterPrefill] = useState<{
+    memberName?: string;
+    month?: number;
+    year?: number;
+  }>({});
+
   const handleRegisterForMember = (memberName: string, month: number, year: number) => {
+    setRegisterPrefill({ memberName, month, year });
     setCurrentTab('register');
   };
 
@@ -119,6 +127,9 @@ export default function App() {
                 members={members}
                 recentTransactions={transactions}
                 onViewReceipt={handleOpenReceipt}
+                prefillMemberName={registerPrefill.memberName}
+                prefillMonth={registerPrefill.month}
+                prefillYear={registerPrefill.year}
               />
             )}
 
