@@ -313,12 +313,28 @@ export function subscribeBudgets(callback: (budget: Budget) => void) {
   });
 }
 
+// Helper to remove any undefined fields before writing to Firestore
+function cleanFirestoreData<T extends Record<string, any>>(data: T): Record<string, any> {
+  const clean: Record<string, any> = {};
+  for (const [key, val] of Object.entries(data)) {
+    if (val !== undefined) {
+      if (val !== null && typeof val === 'object' && !Array.isArray(val) && !(val instanceof Date)) {
+        clean[key] = cleanFirestoreData(val);
+      } else {
+        clean[key] = val;
+      }
+    }
+  }
+  return clean;
+}
+
 // Database Actions
 export async function addTransaction(transaction: Omit<Transaction, 'id'>): Promise<string> {
-  const docRef = await addDoc(collection(db, TRANSACTIONS_COLLECTION), {
+  const sanitized = cleanFirestoreData({
     ...transaction,
     createdAt: serverTimestamp(),
   });
+  const docRef = await addDoc(collection(db, TRANSACTIONS_COLLECTION), sanitized);
   return docRef.id;
 }
 
@@ -327,15 +343,17 @@ export async function deleteTransaction(id: string): Promise<void> {
 }
 
 export async function addMember(member: Omit<Member, 'id'>): Promise<string> {
-  const docRef = await addDoc(collection(db, MEMBERS_COLLECTION), {
+  const sanitized = cleanFirestoreData({
     ...member,
     createdAt: serverTimestamp(),
   });
+  const docRef = await addDoc(collection(db, MEMBERS_COLLECTION), sanitized);
   return docRef.id;
 }
 
 export async function updateMember(id: string, data: Partial<Member>): Promise<void> {
-  await updateDoc(doc(db, MEMBERS_COLLECTION, id), data);
+  const sanitized = cleanFirestoreData(data);
+  await updateDoc(doc(db, MEMBERS_COLLECTION, id), sanitized);
 }
 
 export async function deleteMember(id: string): Promise<void> {
@@ -343,7 +361,8 @@ export async function deleteMember(id: string): Promise<void> {
 }
 
 export async function updateBudget(data: Partial<Budget>): Promise<void> {
-  await setDoc(doc(db, BUDGETS_COLLECTION, 'current'), data, { merge: true });
+  const sanitized = cleanFirestoreData(data);
+  await setDoc(doc(db, BUDGETS_COLLECTION, 'current'), sanitized, { merge: true });
 }
 
 // Seed Initial Data if requested manually

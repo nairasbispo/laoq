@@ -68,14 +68,48 @@ export const RegisterPaymentView: React.FC<RegisterPaymentViewProps> = ({
 
     setReceiptFileName(file.name);
 
-    // Convert to base64 DataURL for direct cross-device preview in Firestore
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      if (event.target?.result) {
-        setReceiptUrl(event.target.result as string);
-      }
-    };
-    reader.readAsDataURL(file);
+    // Compress image if image file to ensure fast saving & prevent Firestore doc size limits
+    if (file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const maxDim = 1200;
+          let width = img.width;
+          let height = img.height;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            const compressed = canvas.toDataURL('image/jpeg', 0.8);
+            setReceiptUrl(compressed);
+          } else {
+            setReceiptUrl(event.target?.result as string);
+          }
+        };
+        img.src = event.target?.result as string;
+      };
+      reader.readAsDataURL(file);
+    } else {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          setReceiptUrl(event.target.result as string);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleApplyDirectUrl = () => {
