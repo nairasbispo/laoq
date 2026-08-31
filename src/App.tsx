@@ -4,9 +4,7 @@ import {
   subscribeTransactions, 
   subscribeMembers, 
   subscribeBudgets, 
-  seedDatabaseIfEmpty, 
-  resetDatabaseToDefaults,
-  clearDatabaseCompletely
+  seedDatabaseIfEmpty
 } from './firebase';
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
@@ -16,7 +14,6 @@ import { FlowView } from './components/FlowView';
 import { StatusView } from './components/StatusView';
 import { ReceiptModal } from './components/ReceiptModal';
 import { AllTransactionsModal } from './components/AllTransactionsModal';
-import { DatabaseModal } from './components/DatabaseModal';
 import { AnimatePresence, motion } from 'motion/react';
 
 export default function App() {
@@ -24,13 +21,12 @@ export default function App() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [budget, setBudget] = useState<Budget>({
-    name: 'Event Budget',
-    total: 2000,
-    spent: 1550,
-    category: 'Eventos e Congressos',
+    name: 'Orçamento da Liga',
+    total: 0,
+    spent: 0,
+    category: 'Eventos e Projetos',
   });
   const [isSyncing, setIsSyncing] = useState(false);
-  const [isDatabaseModalOpen, setIsDatabaseModalOpen] = useState(false);
 
   // Receipt Modal Lightbox state
   const [receiptModalData, setReceiptModalData] = useState<{
@@ -44,9 +40,9 @@ export default function App() {
   // All Transactions Modal state
   const [isAllTransactionsModalOpen, setIsAllTransactionsModalOpen] = useState(false);
 
-  // Real-time Firestore Subscriptions & Initial Seeding
+  // Real-time Firestore Subscriptions
   useEffect(() => {
-    // 1. Seed if empty
+    // 1. Initial check (keeps DB clean)
     seedDatabaseIfEmpty();
 
     // 2. Subscribe to real-time updates
@@ -84,32 +80,15 @@ export default function App() {
     });
   };
 
-  const handleClearAll = async () => {
-    setIsSyncing(true);
-    await clearDatabaseCompletely();
-    setTimeout(() => {
-      setIsSyncing(false);
-    }, 600);
-  };
-
-  const handleRestoreDefaults = async () => {
-    setIsSyncing(true);
-    await resetDatabaseToDefaults();
-    setTimeout(() => {
-      setIsSyncing(false);
-    }, 600);
-  };
-
   const handleRegisterForMember = (memberName: string, month: number, year: number) => {
     setCurrentTab('register');
   };
 
   return (
     <div className="min-h-screen bg-[#f7f9fb] text-[#191c1e] font-sans flex flex-col selection:bg-[#9fcde1] selection:text-[#003746]">
-      {/* Sticky App Header with Realtime Status & Database Manager */}
+      {/* Sticky App Header with Realtime Status */}
       <Header
         currentTab={currentTab}
-        onOpenDatabaseModal={() => setIsDatabaseModalOpen(true)}
         isSyncing={isSyncing}
       />
 
@@ -184,15 +163,6 @@ export default function App() {
         onClose={() => setIsAllTransactionsModalOpen(false)}
         transactions={transactions}
         onViewReceipt={handleOpenReceipt}
-      />
-
-      {/* Database Management Modal (Clear all or Reset demo data) */}
-      <DatabaseModal
-        isOpen={isDatabaseModalOpen}
-        onClose={() => setIsDatabaseModalOpen(false)}
-        onClearAll={handleClearAll}
-        onRestoreDefaults={handleRestoreDefaults}
-        isProcessing={isSyncing}
       />
     </div>
   );

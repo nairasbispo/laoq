@@ -1,10 +1,8 @@
 import React from 'react';
 import type { TabType } from '../types';
-import { RefreshCw, Database } from 'lucide-react';
 
 interface HeaderProps {
   currentTab: TabType;
-  onOpenDatabaseModal: () => void;
   isSyncing?: boolean;
 }
 
@@ -15,7 +13,7 @@ const TAB_TITLES: Record<TabType, string> = {
   status: 'Status',
 };
 
-export const Header: React.FC<HeaderProps> = ({ currentTab, onOpenDatabaseModal, isSyncing }) => {
+export const Header: React.FC<HeaderProps> = ({ currentTab, isSyncing }) => {
   return (
     <header className="fixed top-0 w-full z-40 bg-[#f7f9fb]/90 backdrop-blur-xl pt-safe border-b border-[#e0e3e5]/60 shadow-[0_1px_8px_rgba(0,0,0,0.03)]">
       <div className="max-w-2xl mx-auto h-16 flex items-center justify-between px-4">
@@ -34,8 +32,8 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onOpenDatabaseModal,
           </div>
         </div>
 
-        {/* Right: Realtime Firebase indicator & Actions */}
-        <div className="flex items-center gap-2">
+        {/* Right: Realtime Firebase indicator & Logo */}
+        <div className="flex items-center gap-2.5">
           {/* Live Cloud Sync Indicator */}
           <div 
             title="Sincronização em tempo real via Firebase Firestore"
@@ -45,18 +43,8 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onOpenDatabaseModal,
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
-            <span className="hidden sm:inline text-[11px] font-semibold">Firebase Sync</span>
+            <span className="text-[11px] font-semibold">Firebase Sync</span>
           </div>
-
-          {/* Database Manager / Reset Button */}
-          <button
-            onClick={onOpenDatabaseModal}
-            title="Gerenciar Banco de Dados (Zerar ou Restaurar)"
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white border border-[#c0c8cb] text-[#41484b] hover:text-[#ba1a1a] hover:border-[#ba1a1a] hover:bg-[#ffdad6]/20 transition-all text-xs font-semibold shadow-sm active:scale-95"
-          >
-            <Database className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-[#003746]' : ''}`} />
-            <span className="hidden sm:inline text-[11px]">Banco</span>
-          </button>
 
           {/* LAOQ Logo Avatar */}
           <div className="w-9 h-9 rounded-full bg-white border border-[#c0c8cb] p-0.5 shadow-sm overflow-hidden flex items-center justify-center">

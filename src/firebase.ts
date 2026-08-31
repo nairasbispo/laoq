@@ -265,10 +265,10 @@ export const INITIAL_TRANSACTIONS: Omit<Transaction, 'id'>[] = [
 ];
 
 export const INITIAL_BUDGET: Budget = {
-  name: 'Event Budget',
-  total: 2000.00,
-  spent: 1550.00,
-  category: 'Eventos e Congressos'
+  name: 'Orçamento da Liga',
+  total: 0,
+  spent: 0,
+  category: 'Eventos e Projetos'
 };
 
 // Real-time synchronization listeners
@@ -346,35 +346,10 @@ export async function updateBudget(data: Partial<Budget>): Promise<void> {
   await setDoc(doc(db, BUDGETS_COLLECTION, 'current'), data, { merge: true });
 }
 
-// Seed Initial Data if Firestore is empty
+// Seed Initial Data if requested manually
 export async function seedDatabaseIfEmpty(): Promise<boolean> {
-  try {
-    const transactionsSnap = await getDocs(collection(db, TRANSACTIONS_COLLECTION));
-    if (transactionsSnap.empty) {
-      console.log('Seeding initial transactions...');
-      for (const t of INITIAL_TRANSACTIONS) {
-        await addDoc(collection(db, TRANSACTIONS_COLLECTION), t);
-      }
-    }
-
-    const membersSnap = await getDocs(collection(db, MEMBERS_COLLECTION));
-    if (membersSnap.empty) {
-      console.log('Seeding initial members...');
-      for (const m of INITIAL_MEMBERS) {
-        await addDoc(collection(db, MEMBERS_COLLECTION), m);
-      }
-    }
-
-    const budgetSnap = await getDocs(collection(db, BUDGETS_COLLECTION));
-    if (budgetSnap.empty) {
-      console.log('Seeding initial budget...');
-      await setDoc(doc(db, BUDGETS_COLLECTION, 'current'), INITIAL_BUDGET);
-    }
-    return true;
-  } catch (err) {
-    console.error('Failed to seed initial data:', err);
-    return false;
-  }
+  // Do not auto-seed sample data so the database stays clean as requested by the user
+  return true;
 }
 
 // Force re-seed (Reset demo data)

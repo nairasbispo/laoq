@@ -99,14 +99,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* Top Title & Subtitle */}
       <div className="flex flex-col">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-[#71787c]">
-          Financial Overview
+          Visão Financeira
         </h2>
         <h1 className="text-lg font-headline font-semibold text-[#191c1e] tracking-tight">
           Liga Acadêmica de Otimização e Qualidade
         </h1>
       </div>
 
-      {/* Main SALDO ATUAL Card (exact visual match to Image 3) */}
+      {/* Main SALDO ATUAL Card */}
       <div className="relative rounded-2xl bg-gradient-to-b from-[#e6eef0] to-[#f2f4f6] p-6 shadow-sm border border-[#c0c8cb]/40 overflow-hidden">
         {/* Subtle orange accent top strip */}
         <div className="absolute top-0 left-0 right-0 h-1 bg-[#8e4e00]/70"></div>
@@ -124,9 +124,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </span>
             </div>
             
-            <div className="flex items-center gap-1.5 mt-3 text-xs font-semibold text-[#003746]">
-              <TrendingUp className="w-3.5 h-3.5" />
-              <span>+12% this month</span>
+            <div className="flex items-center gap-1.5 mt-2 text-xs font-medium text-[#71787c]">
+              <span>{transactions.length} {transactions.length === 1 ? 'movimentação registrada' : 'movimentações registradas'}</span>
             </div>
           </div>
 
@@ -170,7 +169,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
           <h3 className="font-headline font-semibold text-[#191c1e] text-base">
-            Budget Allocation
+            Alocação de Orçamento
           </h3>
           <button 
             onClick={() => setIsEditingBudget(!isEditingBudget)}
@@ -190,7 +189,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 value={newBudgetName}
                 onChange={(e) => setNewBudgetName(e.target.value)}
                 className="w-full mt-1 px-3 py-2 text-sm border border-[#c0c8cb] rounded-lg focus:outline-[#003746]"
-                placeholder="Ex: Event Budget"
+                placeholder="Ex: Orçamento de Eventos"
               />
             </div>
             <div>
@@ -214,9 +213,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         ) : (
           <div className="rounded-2xl bg-[#eceef0]/90 p-5 border border-[#c0c8cb]/30 shadow-sm flex flex-col gap-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-[#41484b]">{budget.name || 'Event Budget'}</span>
+              <span className="text-sm font-medium text-[#41484b]">{budget.name || 'Orçamento da Liga'}</span>
               <span className="text-xs font-bold text-[#003746] bg-[#9fcde1]/30 px-2.5 py-0.5 rounded-full">
-                {budgetPercent}% Used
+                {budgetPercent}% Utilizado
               </span>
             </div>
 
@@ -233,8 +232,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
 
             <div className="flex items-center justify-between text-xs text-[#41484b]">
-              <span>R$ {budgetSpent.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} spent</span>
-              <span>R$ {budgetRemaining.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} remaining</span>
+              <span>R$ {budgetSpent.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} gastos</span>
+              <span>R$ {budgetRemaining.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} restantes</span>
             </div>
           </div>
         )}
@@ -244,13 +243,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <h3 className="font-headline font-semibold text-[#191c1e] text-base">
-            Recent Activity
+            Atividades Recentes
           </h3>
           <button
             onClick={() => onNavigate('flow')}
             className="text-xs font-semibold text-[#003746] hover:underline"
           >
-            View All
+            Ver Todas
           </button>
         </div>
 
@@ -299,7 +298,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       )}
                     </div>
                     <span className="text-xs text-[#71787c]">
-                      {formatDate(item.date)} • {isIncome ? 'Income' : 'Expense'}
+                      {formatDate(item.date)} • {isIncome ? 'Entrada' : 'Saída'}
                     </span>
                   </div>
                 </div>
