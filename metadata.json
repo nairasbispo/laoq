@@ -1,0 +1,6 @@
+{
+  "name": "LAOQ - Gestão Financeira e Mensalidades",
+  "description": "Sistema de gestão financeira, controle de mensalidades e fluxo de caixa da Liga Acadêmica de Otimização e Qualidade com sincronização em tempo real via Firebase.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
